@@ -6,16 +6,25 @@ import opkg
 import getopt
 import re
 
-verbose = 0
+import datetime
+import shutil
+import time
+
+verbose = True
+
+log = open("opkg-make-index.log", "w+")
+log.write("### START #############" + str(datetime.date.today()) + "#############\n")
 
 def usage():
-     sys.stderr.write("%s [-h] [-s] [-m] [-l Packages.filelist] [-p Packages] [-r Packages.old] [-L localesdir] [-v] packagesdir\n" % (sys.argv[0],))
+     log.write("%s [-h] [-s] [-m] [-l Packages.filelist] [-p Packages] [-r Packages.old] [-L localesdir] [-v] packagesdir\n" % (sys.argv[0],))
+     log.write("### END ###########" + str(datetime.date.today()) + "#############\n")
+     log.close()
      sys.exit(-1)
 
 def to_morgue(filename):
      morgue_dir = pkg_dir + "/morgue"
      if verbose:
-          sys.stderr.write ("Moving " + filename + " to morgue\n")
+          log.write ("Moving " + filename + " to morgue\n")
      if not os.path.exists(morgue_dir):
           os.mkdir(morgue_dir)
      if os.path.exists(pkg_dir + "/" + filename):
@@ -27,7 +36,7 @@ locales_dir = None
 def to_locale(filename, locale):
      locale_dir = pkg_dir + '/' + locales_dir + '/' + locale + "/"
      if verbose:
-          sys.stderr.write ("Moving " + filename + " to " + locale_dir + "\n")
+          log.write ("Moving " + filename + " to " + locale_dir + "\n")
      if not os.path.exists(locale_dir):
           os.mkdir(locale_dir)
      os.rename(pkg_dir + "/" + filename, locale_dir + "/" + filename)
@@ -74,23 +83,28 @@ if packages_filename and not old_filename and os.path.exists(packages_filename):
 pkgsStamps = {}
 if old_filename:
      if (verbose):
-          sys.stderr.write("Reading package list from " + old_filename + "\n")
+          log.write("Reading package list from " + old_filename + "\n")
      old_packages = opkg.Packages()
      old_packages.read_packages_file(old_filename)
      for k in list(old_packages.packages.keys()):
           p = old_packages.packages[k]
           old_pkg_hash[p.filename] = p
      try:
+        backup_name = stamplist_filename + "." + str(int(time.time()))
+        log.write("Copying " + stamplist_filename + " as backup " + backup_name + "[before read only operation]\n")
+        shutil.copy2(stamplist_filename, backup_name)
         f = open(stamplist_filename, "r")
         for l in f:
             l = l.strip()
             s, f = l.split(" ", 1)
             pkgsStamps[f] = int(s)
+            log.write("Read: " + f + " " + s + "\n")
      except IOError:
+        log.write("IOError exception when reading stamps file\n")
         pass
 
 if (verbose):
-     sys.stderr.write("Reading in all the package info from %s\n" % (pkg_dir, ))
+     log.write("Reading in all the package info from %s\n" % (pkg_dir, ))
 
 files=[]
 opkg_extensions=['.ipk','.opk','.deb']
@@ -107,17 +121,23 @@ for abspath in files:
      pkg = None
      fnameStat = os.stat(abspath)
      if filename in old_pkg_hash:
+          if filename in pkgsStamps:
+               log.write("File " + filename + " is in stamps list, mtimes (real-cached): " + str(int(fnameStat.st_mtime)) + "-" + str(pkgsStamps[filename]) + "\n")
+
           if filename in pkgsStamps and int(fnameStat.st_mtime) == pkgsStamps[filename]:
             if (verbose):
-               sys.stderr.write("Found %s in Packages\n" % (filename,))
+               log.write("Found %s in Packages\n" % (filename,))
             pkg = old_pkg_hash[filename]
           else:
-               sys.stderr.write("Found %s in Packages, but mtime differs - re-reading\n" % (filename,))
+               log.write("Found %s in Packages, but mtime differs - re-reading\n" % (filename,))
 
      if not pkg:
           if (verbose):
-               sys.stderr.write("Reading info for package %s\n" % (filename,))
+               log.write("Reading info for package %s\n" % (filename,))
           pkg = opkg.Package(abspath, relpath=pkg_dir)
+     else:
+          log.write("Package %s was set and will not be updated\n" % filename)
+
      pkg_key = ("%s:%s" % (pkg.package, pkg.architecture))
      if (pkg_key in packages.packages):
           old_filename = packages.packages[pkg_key].filename
@@ -138,22 +158,34 @@ for abspath in files:
           if opt_s:
                print(filename)
   except OSError as e:
-      sys.stderr.write("Package %s disappeared on us!\n(%s)\n" % (filename, e))
+      log.write("Package %s disappeared on us!\n(%s)\n" % (filename, e))
       continue
   except IOError as e:
-      sys.stderr.write("Package %s disappeared on us!\n(%s)\n" % (filename, e))
+      log.write("Package %s disappeared on us!\n(%s)\n" % (filename, e))
       continue
+
+backup_name = stamplist_filename + "." + str(int(time.time()))
+log.write("Copying " + stamplist_filename + " as backup " + backup_name + "[before stamps update]\n")
+shutil.copy2(stamplist_filename, backup_name)
 
 pkgsStampsFile = open(stamplist_filename, "w")
 for f in list(pkgsStamps.keys()):
     pkgsStampsFile.write("%d %s\n" % (pkgsStamps[f], f))
 pkgsStampsFile.close()
 
+backup_name = stamplist_filename + "." + str(int(time.time()))
+log.write("Copying " + stamplist_filename + " as backup " + backup_name + "[after stamps update]\n")
+shutil.copy2(stamplist_filename, backup_name)
+
+
+
 if opt_s:
+     log.write("### END ###########" + str(datetime.date.today()) + "#############\n")
+     log.close()
      sys.exit(0)
 
 if verbose:
-     sys.stderr.write("Generating Packages file\n")
+     log.write("Generating Packages file\n")
 if packages_filename:
      tmp_packages_filename = ("%s.%d" % (packages_filename, os.getpid()))
      pkgsFile = open(tmp_packages_filename, "w")
@@ -176,16 +208,16 @@ for name in names:
               to_locale(pkg.filename, locale)
               continue
      if (verbose):
-          sys.stderr.write("Writing info for package %s\n" % (pkg.package,))
+          log.write("Writing info for package %s\n" % (pkg.package,))
      if packages_filename:
           pkgsFile.write(str(pkg))
      else:
           print(pkg)
   except OSError as e:
-      sys.stderr.write("Package %s disappeared on us!\n(%s)\n" % (name, e))
+      log.write("Package %s disappeared on us!\n(%s)\n" % (name, e))
       continue
   except IOError as e:
-      sys.stderr.write("Package %s disappeared on us!\n(%s)\n" % (name, e))
+      log.write("Package %s disappeared on us!\n(%s)\n" % (name, e))
       continue
 
 if packages_filename:
@@ -199,22 +231,22 @@ if packages_filename:
 
 if filelist_filename:
     if verbose:
-        sys.stderr.write("Generate Packages.filelist file\n")
+        log.write("Generate Packages.filelist file\n")
     files = {}
     names = list(packages.packages.keys())
     names.sort()
     for name in names:
         try:
             if verbose:
-                sys.stderr.write("Reading filelist for package '%s'\n" % name)
-#            sys.stderr.write("Package for name '%s':\n'%s'\n" % (name, packages[name]))
+                log.write("Reading filelist for package '%s'\n" % name)
+#            log.write("Package for name '%s':\n'%s'\n" % (name, packages[name]))
             fnlist = packages[name].get_file_list_dir(pkg_dir)
-#            sys.stderr.write("Filelist for package '%s': '%s'\n" % (name, fnlist))
+#            log.write("Filelist for package '%s': '%s'\n" % (name, fnlist))
         except OSError as e:
-            sys.stderr.write("Package %s disappeared on us!\n(%s)\n" % (name, e))
+            log.write("Package %s disappeared on us!\n(%s)\n" % (name, e))
             continue
         except IOError as e:
-            sys.stderr.write("Package %s disappeared on us!\n(%s)\n" % (name, e))
+            log.write("Package %s disappeared on us!\n(%s)\n" % (name, e))
             continue
         for fn in fnlist:
             (h,t) = os.path.split(fn)
@@ -232,3 +264,7 @@ if filelist_filename:
     if posixpath.exists(filelist_filename):
         os.unlink(filelist_filename)
     os.rename(tmp_filelist_filename, filelist_filename)
+
+
+log.write("### END ###########" + str(datetime.date.today()) + "#############\n")
+log.close()
