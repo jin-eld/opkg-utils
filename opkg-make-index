@@ -9,15 +9,17 @@ import re
 import datetime
 import shutil
 import time
+import datetime
 
 verbose = True
 
-log = open("opkg-make-index.log", "a")
-log.write("### START #############" + str(datetime.date.today()) + "#############\n")
+
+log = open("opkg-make-index.log." + str(os.getpid()), "a")
+log.write("### START #############" + datetime.datetime.fromtimestamp(time.time()).strftime('%Y-%m-%d %H:%M:%S') + "#############\n")
 
 def usage():
      log.write("%s [-h] [-s] [-m] [-l Packages.filelist] [-p Packages] [-r Packages.old] [-L localesdir] [-v] packagesdir\n" % (sys.argv[0],))
-     log.write("### END ###########" + str(datetime.date.today()) + "#############\n")
+     log.write("### END ###########" + datetime.datetime.fromtimestamp(time.time()).strftime('%Y-%m-%d %H:%M:%S') + "#############\n")
      log.close()
      sys.exit(-1)
 
@@ -180,7 +182,7 @@ shutil.copy2(stamplist_filename, backup_name)
 
 
 if opt_s:
-     log.write("### END ###########" + str(datetime.date.today()) + "#############\n")
+     log.write("### END ###########" + datetime.datetime.fromtimestamp(time.time()).strftime('%Y-%m-%d %H:%M:%S') + "#############\n")
      log.close()
      sys.exit(0)
 
@@ -266,5 +268,5 @@ if filelist_filename:
     os.rename(tmp_filelist_filename, filelist_filename)
 
 
-log.write("### END ###########" + str(datetime.date.today()) + "#############\n")
+log.write("### END ###########" + datetime.datetime.fromtimestamp(time.time()).strftime('%Y-%m-%d %H:%M:%S') + "#############\n")
 log.close()
