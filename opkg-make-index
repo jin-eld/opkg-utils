@@ -12,7 +12,7 @@ import time
 
 verbose = True
 
-log = open("opkg-make-index.log", "w+")
+log = open("opkg-make-index.log", "a")
 log.write("### START #############" + str(datetime.date.today()) + "#############\n")
 
 def usage():
