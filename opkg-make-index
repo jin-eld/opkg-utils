@@ -10,6 +10,7 @@ import datetime
 import shutil
 import time
 import datetime
+import fcntl
 
 verbose = True
 
@@ -92,15 +93,16 @@ if old_filename:
           p = old_packages.packages[k]
           old_pkg_hash[p.filename] = p
      try:
-        backup_name = stamplist_filename + "." + str(int(time.time()))
+        backup_name = stamplist_filename + "." + str(int(time.time())) + "." + str(os.getpid())
         log.write("Copying " + stamplist_filename + " as backup " + backup_name + "[before read only operation]\n")
         shutil.copy2(stamplist_filename, backup_name)
-        f = open(stamplist_filename, "r")
-        for l in f:
+        f1 = open(stamplist_filename, "r")
+        fcntl.flock(f1, fcntl.LOCK_EX)
+        for l in f1:
             l = l.strip()
-            s, f = l.split(" ", 1)
-            pkgsStamps[f] = int(s)
-            log.write("Read: " + f + " " + s + "\n")
+            s, name = l.split(" ", 1)
+            pkgsStamps[name] = int(s)
+            log.write("Read: " + name + " " + s + "\n")
      except IOError:
         log.write("IOError exception when reading stamps file\n")
         pass
@@ -166,16 +168,15 @@ for abspath in files:
       log.write("Package %s disappeared on us!\n(%s)\n" % (filename, e))
       continue
 
-backup_name = stamplist_filename + "." + str(int(time.time()))
+backup_name = stamplist_filename + "." + str(int(time.time())) + "." + str(os.getpid())
 log.write("Copying " + stamplist_filename + " as backup " + backup_name + "[before stamps update]\n")
 shutil.copy2(stamplist_filename, backup_name)
 
 pkgsStampsFile = open(stamplist_filename, "w")
 for f in list(pkgsStamps.keys()):
     pkgsStampsFile.write("%d %s\n" % (pkgsStamps[f], f))
-pkgsStampsFile.close()
 
-backup_name = stamplist_filename + "." + str(int(time.time()))
+backup_name = stamplist_filename + "." + str(int(time.time())) + "." + str(os.getpid())
 log.write("Copying " + stamplist_filename + " as backup " + backup_name + "[after stamps update]\n")
 shutil.copy2(stamplist_filename, backup_name)
 
@@ -191,6 +192,7 @@ if verbose:
 if packages_filename:
      tmp_packages_filename = ("%s.%d" % (packages_filename, os.getpid()))
      pkgsFile = open(tmp_packages_filename, "w")
+     fcntl.flock(pkgsFile, fcntl.LOCK_EX)
 names = list(packages.packages.keys())
 names.sort()
 for name in names:
@@ -257,16 +259,20 @@ if filelist_filename:
             else: files[t] = files[t] + ',' + name+':'+fn
 
     tmp_filelist_filename = ("%s.%d" % (filelist_filename, os.getpid()))
-    f = open(tmp_filelist_filename, "w")
+    f2 = open(tmp_filelist_filename, "w")
+    fcntl.flock(f2, fcntl.LOCK_EX)
     names = list(files.keys())
     names.sort()
     for name in names:
-         f.write("%s %s\n" % (name, files[name]))
-    f.close()
+         f2.write("%s %s\n" % (name, files[name]))
+
+    f2.close();
     if posixpath.exists(filelist_filename):
         os.unlink(filelist_filename)
+    log.write("Renaming %s to %s\n", (tmp_filelist_filename, filelist_filename))
     os.rename(tmp_filelist_filename, filelist_filename)
 
-
+f1.close();
+pkgsStampsFile.close()
 log.write("### END ###########" + datetime.datetime.fromtimestamp(time.time()).strftime('%Y-%m-%d %H:%M:%S') + "#############\n")
 log.close()
